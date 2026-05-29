@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Caches
+.cache/
+osmnx_cache/
+cache/
+
+# Data / raw outputs
+data/raw/
+
+# Augmented outputs (do not upload large generated CSVs)
+csv/features_all_boroughs_with_location_id_augmented.csv
+csv/*.augmented.csv
+
+# Plots / artifacts
+plots/
+
+# Environment files
+.env
+
+# SQLite / DB files
+*.sqlite
+
+# Coverage / test caches
+.coverage
+.pytest_cache/
+
+# Misc
+*.log
+
+# End of .gitignore
