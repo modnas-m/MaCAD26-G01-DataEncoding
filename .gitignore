@@ -32,8 +32,6 @@ data/raw/
 csv/features_all_boroughs_with_location_id_augmented.csv
 csv/*.augmented.csv
 
-# Plots / artifacts
-plots/
 
 # Environment files
 .env
