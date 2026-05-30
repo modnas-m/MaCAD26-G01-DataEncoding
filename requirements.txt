@@ -20,3 +20,4 @@ rtree==1.2.0
 minisom==2.3.6
 skcikit-learn==2.4.6
 statsmodels==0.14.0
+pyrosm>=0.6.0
