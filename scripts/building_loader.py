@@ -1,16 +1,18 @@
-"""Helpers to load building footprints from a local OSM PBF (pyrosm) or fall back to Overpass (osmnx).
+"""Helpers to load building footprints from a local OSM PBF or fall back to Overpass (osmnx).
 
 Usage:
-  - Prefer: provide a Geofabrik borough PBF and call `get_borough_buildings(borough_query, pbf_path=...)`
+    - Prefer: provide a Geofabrik borough PBF and call `get_borough_buildings(borough_query, pbf_path=...)`
   - Fallback: if `pyrosm` or `pbf_path` is unavailable, this will try `osmnx.features_from_place` (Overpass)
 
 The loader caches per-borough files under `cache/buildings/` as GPKG files.
 """
+import argparse
 from pathlib import Path
 import logging
 
 import geopandas as gpd
 import osmnx as ox
+import pyogrio
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +29,30 @@ def _cache_path(cache_dir: Path, borough_query: str) -> Path:
 
 
 def load_buildings_from_pbf(pbf_path: str, bbox: tuple = None) -> gpd.GeoDataFrame:
-    """Load buildings from a local OSM PBF using pyrosm.
+    """Load buildings from a local OSM PBF using pyogrio's OSM driver.
 
     pbf_path: path to a .osm.pbf file (e.g. Geofabrik extract)
     bbox: optional (minx, miny, maxx, maxy) in lon/lat to restrict the extract
     Returns GeoDataFrame in EPSG:27700.
     """
     try:
-        from pyrosm import OSM
+        buildings = pyogrio.read_dataframe(
+            pbf_path,
+            layer="multipolygons",
+            bbox=bbox,
+            columns=["building"],
+        )
     except Exception as e:
-        raise RuntimeError("pyrosm is not available; install pyrosm to load local PBFs") from e
-
-    osm = OSM(pbf_path)
-    if bbox is not None:
-        buildings = osm.get_buildings(bbox=bbox)
-    else:
-        buildings = osm.get_buildings()
+        raise RuntimeError(f"Could not read OSM PBF via pyogrio: {e}") from e
 
     if buildings is None or buildings.shape[0] == 0:
+        return gpd.GeoDataFrame(columns=["geometry"], geometry="geometry", crs="EPSG:4326")
+
+    if "building" not in buildings.columns:
+        return gpd.GeoDataFrame(columns=["geometry"], geometry="geometry", crs="EPSG:4326")
+
+    buildings = buildings[buildings["building"].notna()].copy()
+    if buildings.empty:
         return gpd.GeoDataFrame(columns=["geometry"], geometry="geometry", crs="EPSG:4326")
 
     # ensure a GeoDataFrame and project to EPSG:27700
@@ -55,11 +63,16 @@ def load_buildings_from_pbf(pbf_path: str, bbox: tuple = None) -> gpd.GeoDataFra
     return buildings.to_crs("EPSG:27700")
 
 
-def get_borough_buildings(borough_query: str, pbf_path: str = None, cache_dir: str = "cache/buildings") -> gpd.GeoDataFrame:
+def get_borough_buildings(
+    borough_query: str,
+    pbf_path: str = None,
+    cache_dir: str = "cache/buildings",
+    allow_overpass_fallback: bool = True,
+) -> gpd.GeoDataFrame:
     """Return buildings GeoDataFrame for a borough query.
 
     If a cached file exists it will be loaded. If `pbf_path` is provided, attempt to extract
-    buildings from that PBF using pyrosm. Otherwise fall back to Overpass via osmnx.features_from_place.
+    buildings from that PBF using pyogrio. Otherwise fall back to Overpass via osmnx.features_from_place.
     The returned GeoDataFrame is in EPSG:27700.
     """
     cache_dir = Path(cache_dir)
@@ -68,6 +81,8 @@ def get_borough_buildings(borough_query: str, pbf_path: str = None, cache_dir: s
     if cache_file.exists():
         try:
             gdf = gpd.read_file(cache_file)
+            if gdf.empty:
+                raise ValueError("cached file is empty")
             if gdf.crs is None:
                 gdf.set_crs(epsg=27700, inplace=True)
             return gdf.to_crs("EPSG:27700")
@@ -92,6 +107,11 @@ def get_borough_buildings(borough_query: str, pbf_path: str = None, cache_dir: s
             logger.warning("Failed to load from PBF (%s): %s", pbf_path, e)
 
     if buildings is None or buildings.shape[0] == 0:
+        if not allow_overpass_fallback:
+            raise RuntimeError(
+                f"No building footprints were loaded from PBF for '{borough_query}'. "
+                "Overpass fallback is disabled."
+            )
         # fallback to Overpass via osmnx
         try:
             tags = {"building": True}
@@ -118,3 +138,47 @@ def get_borough_buildings(borough_query: str, pbf_path: str = None, cache_dir: s
         logger.warning("Failed to cache buildings to %s", cache_file)
 
     return buildings
+
+
+def _main():
+    parser = argparse.ArgumentParser(
+        description="Load borough building footprints from a local OSM PBF or Overpass."
+    )
+    parser.add_argument(
+        "borough_query",
+        nargs="?",
+        help="OSM place query, for example: 'City of Westminster, London, UK'",
+    )
+    parser.add_argument(
+        "--pbf",
+        dest="pbf_path",
+        default=None,
+        help="Path to a local .osm.pbf file (recommended)",
+    )
+    parser.add_argument(
+        "--no-overpass",
+        action="store_true",
+        help="Disable Overpass fallback and fail if the local PBF cannot be loaded.",
+    )
+    args = parser.parse_args()
+
+    if not args.borough_query:
+        parser.print_help()
+        print(
+            "\nExample:\n"
+            "  python scripts/building_loader.py \"City of Westminster, London, UK\" --pbf path\\to\\greater-london-latest.osm.pbf"
+        )
+        return 0
+
+    buildings = get_borough_buildings(
+        args.borough_query,
+        pbf_path=args.pbf_path,
+        allow_overpass_fallback=not args.no_overpass,
+    )
+    print(f"Loaded {len(buildings):,} building footprints for {args.borough_query!r}")
+    print(f"CRS: {buildings.crs}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())
