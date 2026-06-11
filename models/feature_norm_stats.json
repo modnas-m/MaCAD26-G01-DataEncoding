@@ -1,0 +1,30 @@
+{
+  "lighting": {
+    "min": 0.0,
+    "max": 163.3904390622207
+  },
+  "visibility": {
+    "min": 0.2468,
+    "max": 1.0
+  },
+  "connectivity": {
+    "min": 3.0,
+    "max": 17.0
+  },
+  "enclosure": {
+    "min": 0.0,
+    "max": 1.1360145545399796
+  },
+  "dominant_land_use_score": {
+    "min": 0.0,
+    "max": 1.0
+  },
+  "public_transport_proximity_m": {
+    "min": 0.45,
+    "max": 541.24
+  },
+  "pedestrian_priority_score": {
+    "min": 0.3375,
+    "max": 0.73
+  }
+}
